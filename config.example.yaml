@@ -1,0 +1,46 @@
+project:
+  name: "Manchester Electrician Leads"
+
+search:
+  location: "Manchester, UK"
+  queries:
+    - "electricians"
+    - "emergency electricians"
+    - "electrical contractors"
+  max_results_per_query: 50
+  max_total_results: 150
+  max_api_requests: 100
+
+filters:
+  operational_only: true
+  minimum_rating: 0
+  minimum_review_count: 0
+
+website_check:
+  enabled: true
+  concurrency: 10
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 10
+  retries: 1
+  follow_redirects: true
+  max_redirects: 10
+  max_response_size_mb: 5
+  important_pages_enabled: false
+  max_important_pages: 5
+
+cache:
+  places_ttl_days: 30
+  website_check_ttl_days: 7
+
+output:
+  directory: "output"
+  include_working_websites: true
+
+database:
+  path: "data/lead_finder.db"
+
+logging:
+  level: "INFO"
+  directory: "logs"
+  console: true
+  file: true

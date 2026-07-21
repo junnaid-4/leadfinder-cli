@@ -1,0 +1,37 @@
+# Environment and secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+ENV/
+
+# Tooling
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project data
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+logs/*.log
+output/*.csv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
