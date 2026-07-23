@@ -16,6 +16,7 @@ EXPECTED_TABLES = {
     "businesses",
     "website_checks",
     "cached_api_responses",
+    "lead_scores",
 }
 
 

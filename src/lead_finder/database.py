@@ -124,6 +124,7 @@ class Database:
         """Create schema if missing and return schema version."""
         connection = self.connect()
         self._migrate_website_checks_schema(connection)
+        self._migrate_lead_scores_schema(connection)
         connection.executescript(CREATE_TABLES_SQL)
         version = self.get_schema_version(connection)
         if version is None:
@@ -138,6 +139,41 @@ class Database:
             raise RuntimeError(msg)
         connection.commit()
         return version
+
+    def _migrate_lead_scores_schema(self, connection: sqlite3.Connection) -> None:
+        """Create the lead_scores table if missing."""
+        cursor = connection.execute("PRAGMA table_info(lead_scores)")
+        columns = {row["name"] for row in cursor.fetchall()}
+
+        if not columns:
+            connection.execute(
+                """
+                CREATE TABLE lead_scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    business_id INTEGER NOT NULL,
+                    raw_score INTEGER NOT NULL,
+                    final_score INTEGER NOT NULL,
+                    priority TEXT NOT NULL,
+                    score_breakdown_json TEXT NOT NULL,
+                    scoring_version TEXT NOT NULL,
+                    scored_at TEXT NOT NULL,
+                    FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lead_scores_business_id ON lead_scores(business_id)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lead_scores_final_score ON lead_scores(final_score)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lead_scores_priority ON lead_scores(priority)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lead_scores_scored_at ON lead_scores(scored_at)"
+            )
+            connection.commit()
 
     def _migrate_website_checks_schema(self, connection: sqlite3.Connection) -> None:
         """Migrate the website_checks table from Stage 1/2 to Stage 3 safely."""
@@ -430,6 +466,77 @@ class Database:
                 content_type,
                 error_type,
                 error_message,
+            ),
+        )
+        self.commit()
+
+    def get_businesses_to_score(self, force_refresh: bool = False) -> list[sqlite3.Row]:
+        """Return businesses needing lead scoring, paired with their latest website check."""
+        # Using a correlated subquery to get the latest website check reliably
+        sql = """
+            SELECT
+                b.id as business_id,
+                b.place_id,
+                b.business_name,
+                b.phone,
+                b.address as formatted_address,
+                b.rating,
+                b.review_count as user_rating_count,
+                b.business_status,
+                wc.original_url as website_original_url,
+                wc.normalized_url as website_normalized_url,
+                wc.final_url as website_final_url,
+                wc.status as website_check_status,
+                wc.http_status as website_http_status,
+                wc.redirect_count as website_redirect_count,
+                wc.response_time_ms as website_response_time_ms,
+                wc.content_type as website_content_type,
+                wc.error_type as website_error_type,
+                wc.error_message as website_error_message
+            FROM businesses b
+            LEFT JOIN website_checks wc ON wc.id = (
+                SELECT id FROM website_checks
+                WHERE business_id = b.id
+                ORDER BY checked_at DESC, id DESC
+                LIMIT 1
+            )
+        """
+        if not force_refresh:
+            sql += """
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM lead_scores
+                    WHERE lead_scores.business_id = b.id
+                )
+            """
+        cursor = self.execute(sql)
+        return cursor.fetchall()
+
+    def save_lead_score(
+        self,
+        business_id: int,
+        raw_score: int,
+        final_score: int,
+        priority: str,
+        score_breakdown_json: str,
+        scoring_version: str,
+        scored_at: str,
+    ) -> None:
+        self.execute(
+            """
+            INSERT INTO lead_scores (
+                business_id, raw_score, final_score, priority,
+                score_breakdown_json, scoring_version, scored_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                business_id,
+                raw_score,
+                final_score,
+                priority,
+                score_breakdown_json,
+                scoring_version,
+                scored_at,
             ),
         )
         self.commit()

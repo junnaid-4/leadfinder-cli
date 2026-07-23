@@ -108,6 +108,60 @@ class LoggingConfigSection(BaseModel):
         return normalized
 
 
+class LeadScoringWeightsConfig(BaseModel):
+    """Weights for lead scoring rules."""
+
+    no_website: int = 40
+    unreachable: int = 30
+    dns_error: int = 30
+    ssl_error: int = 25
+    redirect_loop: int = 25
+    timeout: int = 20
+    http_5xx: int = 25
+    http_4xx: int = 15
+    blocked: int = 5
+    invalid_url: int = 20
+    unknown_error: int = 10
+
+    phone_present: int = 10
+    phone_missing: int = -10
+
+    rating_high: int = 10
+    rating_medium: int = 5
+
+    reviews_high: int = 15
+    reviews_medium: int = 10
+    reviews_low: int = 5
+
+    address_present: int = 5
+    missing_name: int = -20
+    temporarily_closed: int = -20
+
+
+class LeadScoringThresholdsConfig(BaseModel):
+    """Thresholds for lead priority categories."""
+
+    very_high: int = Field(default=80, ge=0, le=100)
+    high: int = Field(default=60, ge=0, le=100)
+    medium: int = Field(default=40, ge=0, le=100)
+    low: int = Field(default=20, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_threshold_order(self) -> LeadScoringThresholdsConfig:
+        if not (self.very_high > self.high > self.medium > self.low):
+            msg = "Thresholds must be strictly descending: very_high > high > medium > low"
+            raise ValueError(msg)
+        return self
+
+
+class LeadScoringConfig(BaseModel):
+    """Lead scoring configuration."""
+
+    enabled: bool = True
+    weights: LeadScoringWeightsConfig = Field(default_factory=LeadScoringWeightsConfig)
+    thresholds: LeadScoringThresholdsConfig = Field(default_factory=LeadScoringThresholdsConfig)
+
+
 class AppConfig(BaseModel):
     """Full application configuration from YAML."""
 
@@ -119,6 +173,7 @@ class AppConfig(BaseModel):
     output: OutputConfig = Field(default_factory=OutputConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     logging: LoggingConfigSection = Field(default_factory=LoggingConfigSection)
+    lead_scoring: LeadScoringConfig = Field(default_factory=LeadScoringConfig)
 
     def output_directory(self) -> Path:
         return Path(self.output.directory)

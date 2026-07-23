@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
@@ -13,6 +14,11 @@ from rich.console import Console
 
 from lead_finder.config import AppConfig, EnvSettings, load_config
 from lead_finder.database import init_database
+from lead_finder.lead_scoring import (
+    SCORING_VERSION,
+    BusinessScoringInput,
+    calculate_lead_score,
+)
 from lead_finder.logging_config import setup_logging
 from lead_finder.models import SearchRunStatus
 from lead_finder.places_client import (
@@ -20,6 +26,7 @@ from lead_finder.places_client import (
     PlacesClient,
     build_places_cache_key,
 )
+from lead_finder.website_checker import WebsiteCheckResult, WebsiteStatus
 
 app = typer.Typer(
     name="lead-finder",
@@ -318,6 +325,242 @@ def check_websites(
             console.print(f"{label}: {count}")
 
     console.print(f"Database path: {app_config.database_path()}")
+
+
+@app.command()
+def score_leads(
+    config: Annotated[
+        Path,
+        typer.Option("--config", "-c", help="Path to YAML configuration file."),
+    ] = Path("config.yaml"),
+    force_refresh: Annotated[
+        bool,
+        typer.Option("--force-refresh", help="Score already scored businesses again."),
+    ] = False,
+) -> None:
+    """Calculate and assign lead scores to businesses."""
+    app_config = _resolve_config(config)
+    setup_logging(app_config)
+
+    db = init_database(app_config.database_path())
+    try:
+        businesses = db.get_businesses_to_score(force_refresh=force_refresh)
+    finally:
+        db.close()
+
+    if not businesses:
+        console.print("No businesses available to score.", style="yellow")
+        raise typer.Exit()
+
+    considered = len(businesses)
+    scored = 0
+    skipped_existing = 0
+    unscorable = 0
+    failed = 0
+
+    priority_counts = {
+        "very_high": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "very_low": 0,
+    }
+
+    db = init_database(app_config.database_path())
+
+    total_score = 0
+    highest_score = -1
+
+    try:
+        all_businesses_cursor = db.execute("SELECT id, place_id FROM businesses")
+        all_businesses = all_businesses_cursor.fetchall()
+
+        scored_ids_cursor = db.execute("SELECT DISTINCT business_id FROM lead_scores")
+        scored_ids = {row[0] for row in scored_ids_cursor.fetchall()}
+    except Exception as e:
+        console.print(f"Error initializing data: {e}", style="red")
+        db.close()
+        raise typer.Exit(1) from e
+
+    considered = len(all_businesses)
+
+    if force_refresh:
+        to_process = all_businesses
+        skipped_existing = 0
+    else:
+        to_process = [b for b in all_businesses if b["id"] not in scored_ids]
+        skipped_existing = considered - len(to_process)
+
+    if not to_process:
+        console.print("No businesses available to score.", style="yellow")
+        db.close()
+        raise typer.Exit()
+
+    try:
+        full_rows = db.get_businesses_to_score(force_refresh=True)
+    except Exception as e:
+        console.print(f"Error fetching data: {e}", style="red")
+        db.close()
+        raise typer.Exit(1) from e
+
+    process_ids = {b["id"] for b in to_process}
+
+    for row in full_rows:
+        b_id = row["business_id"]
+        if b_id not in process_ids:
+            continue
+
+        place_id = row["place_id"]
+        if not place_id or not place_id.strip():
+            unscorable += 1
+            logging.getLogger(__name__).warning(
+                f"Business {b_id} is unscorable due to missing place_id"
+            )
+            continue
+
+        try:
+            b_input = BusinessScoringInput(
+                business_id=b_id,
+                place_id=place_id,
+                name=row["business_name"],
+                phone=row["phone"],
+                address=row["formatted_address"],
+                rating=row["rating"],
+                review_count=row["user_rating_count"],
+                business_status=row["business_status"],
+            )
+
+            ws_status_str = row["website_check_status"]
+            if ws_status_str:
+                try:
+                    ws_status = WebsiteStatus(ws_status_str)
+                except ValueError:
+                    ws_status = WebsiteStatus.UNKNOWN_ERROR
+
+                wc_input = WebsiteCheckResult(
+                    business_id=b_id,
+                    original_url=row["website_original_url"],
+                    normalized_url=row["website_normalized_url"],
+                    final_url=row["website_final_url"],
+                    status=ws_status,
+                    http_status=row["website_http_status"],
+                    redirect_count=row["website_redirect_count"] or 0,
+                    response_time_ms=row["website_response_time_ms"],
+                    content_type=row["website_content_type"],
+                    error_type=row["website_error_type"],
+                    error_message=row["website_error_message"],
+                )
+            else:
+                wc_input = None
+
+            result = calculate_lead_score(b_input, wc_input, app_config.lead_scoring)
+
+            components_list = [
+                {"rule": c.rule, "points": c.points, "explanation": c.explanation}
+                for c in result.components
+            ]
+
+            db.save_lead_score(
+                business_id=b_id,
+                raw_score=result.raw_score,
+                final_score=result.final_score,
+                priority=result.priority.value,
+                score_breakdown_json=json.dumps(components_list),
+                scoring_version=SCORING_VERSION,
+                scored_at=result.scored_at.isoformat(),
+            )
+
+            scored += 1
+            priority_counts[result.priority.value] += 1
+            total_score += result.final_score
+            if result.final_score > highest_score:
+                highest_score = result.final_score
+
+        except Exception as e:
+            failed += 1
+            logging.getLogger(__name__).exception(f"Failed to score business {b_id}: {e}")
+
+    db.close()
+
+    avg_score = (total_score / scored) if scored > 0 else 0
+
+    console.print("\n[bold]Lead Scoring Summary[/bold]")
+    console.print(f"Businesses considered: {considered}")
+    console.print(f"Businesses scored: {scored}")
+    console.print(f"Skipped existing scores: {skipped_existing}")
+    console.print(f"Unscorable businesses: {unscorable}")
+    console.print(f"Failed records: {failed}")
+    console.print("")
+    console.print(f"Very high priority: {priority_counts['very_high']}")
+    console.print(f"High priority: {priority_counts['high']}")
+    console.print(f"Medium priority: {priority_counts['medium']}")
+    console.print(f"Low priority: {priority_counts['low']}")
+    console.print(f"Very low priority: {priority_counts['very_low']}")
+    console.print("")
+    console.print(f"Average score: {avg_score:.1f}")
+    console.print(f"Highest score: {max(highest_score, 0)}")
+    console.print(f"Database path: {app_config.database_path()}")
+    console.print(f"Scoring version: {SCORING_VERSION}")
+
+
+@app.command()
+def explain_score(
+    business_id: int,
+    config: Annotated[
+        Path,
+        typer.Option("--config", "-c", help="Path to YAML configuration file."),
+    ] = Path("config.yaml"),
+) -> None:
+    """Explain the latest lead score for a business."""
+    app_config = _resolve_config(config)
+    setup_logging(app_config)
+
+    db = init_database(app_config.database_path())
+
+    try:
+        # Get business name
+        b_cursor = db.execute("SELECT business_name FROM businesses WHERE id = ?", (business_id,))
+        b_row = b_cursor.fetchone()
+        if not b_row:
+            console.print(f"Business ID {business_id} not found.", style="red")
+            raise typer.Exit(1)
+
+        b_name = b_row["business_name"]
+
+        # Get latest score
+        s_cursor = db.execute(
+            """
+            SELECT final_score, priority, scoring_version, score_breakdown_json
+            FROM lead_scores
+            WHERE business_id = ?
+            ORDER BY scored_at DESC, id DESC
+            LIMIT 1
+            """,
+            (business_id,),
+        )
+        s_row = s_cursor.fetchone()
+        if not s_row:
+            console.print(
+                f"No score found for business '{b_name}' (ID {business_id}).", style="yellow"
+            )
+            raise typer.Exit()
+
+        console.print(f"[bold]Business:[/bold] {b_name}")
+        console.print(f"[bold]Latest score:[/bold] {s_row['final_score']}")
+        console.print(f"[bold]Priority:[/bold] {s_row['priority']}")
+        console.print(f"[bold]Scoring version:[/bold] {s_row['scoring_version']}")
+        console.print("\n[bold]Score Breakdown:[/bold]")
+
+        components = json.loads(s_row["score_breakdown_json"])
+        for comp in components:
+            rule = comp.get("rule", "unknown")
+            points = comp.get("points", 0)
+            explanation = comp.get("explanation", "")
+            sign = "+" if points >= 0 else ""
+            console.print(f"- {explanation} ({rule}): {sign}{points}")
+
+    finally:
+        db.close()
 
 
 @app.command()

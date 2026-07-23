@@ -32,6 +32,7 @@ def temp_db(tmp_path):
     yield db_path
     db.close()
 
+
 @pytest.fixture
 def temp_config(tmp_path, temp_db):
     config_path = tmp_path / "config.yaml"
@@ -48,6 +49,7 @@ database:
   path: "{temp_db.as_posix()}"
 """)
     return config_path
+
 
 @respx.mock
 def test_cli_check_websites_success(temp_config, temp_db):
@@ -68,14 +70,13 @@ def test_cli_check_websites_success(temp_config, temp_db):
     statuses = [row[0] for row in cursor.fetchall()]
     assert statuses == ["working", "http_error", "no_website"]
 
+
 @respx.mock
 def test_cli_check_websites_force_refresh_and_history(temp_config, temp_db):
     db = init_database(temp_db)
 
     # Requirement 10: A missing website persists a no_website row
-    db.save_website_check_result(
-        3, None, None, None, "no_website", None, 0, None, None, None, None
-    )
+    db.save_website_check_result(3, None, None, None, "no_website", None, 0, None, None, None, None)
 
     db.save_website_check_result(
         1,
@@ -108,6 +109,7 @@ def test_cli_check_websites_force_refresh_and_history(temp_config, temp_db):
     count = cursor.fetchone()[0]
     assert count == 2  # history preserved!
 
+
 @respx.mock
 def test_cli_check_websites_continues_on_failure(temp_config, temp_db):
     # Requirement 11: One website failure does not stop other businesses
@@ -121,6 +123,7 @@ def test_cli_check_websites_continues_on_failure(temp_config, temp_db):
     assert "Checking 3 websites" in result.stdout
     assert "Working: 1" in result.stdout
     assert "Other failures: 1" in result.stdout
+
 
 def test_database_migration_idempotent_no_data_loss(tmp_path):
     db_path = tmp_path / "mig_test.db"
@@ -175,6 +178,7 @@ def test_database_migration_idempotent_no_data_loss(tmp_path):
     db2 = init_database(db_path)
     cursor2 = db2.execute("SELECT count(*) FROM website_checks")
     assert cursor2.fetchone()[0] == 1
+
 
 @respx.mock
 def test_cli_summary_counts_all(temp_config, temp_db):

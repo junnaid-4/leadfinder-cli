@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from urllib.parse import urlparse
 
 import httpx
@@ -13,7 +13,7 @@ import httpx
 from lead_finder.config import WebsiteCheckConfig
 
 
-class WebsiteStatus(str, Enum):  # noqa: UP042
+class WebsiteStatus(StrEnum):
     NO_WEBSITE = "no_website"
     WORKING = "working"
     UNREACHABLE = "unreachable"
@@ -27,7 +27,7 @@ class WebsiteStatus(str, Enum):  # noqa: UP042
     UNKNOWN_ERROR = "unknown_error"
 
 
-@dataclass
+@dataclass(frozen=True)
 class WebsiteCheckResult:
     business_id: int
     original_url: str | None
@@ -38,8 +38,8 @@ class WebsiteCheckResult:
     redirect_count: int
     response_time_ms: int | None
     content_type: str | None
-    error_type: str | None
-    error_message: str | None
+    error_type: str | None = None
+    error_message: str | None = None
 
 
 def normalize_url(raw_url: str | None) -> str | None:
@@ -51,8 +51,10 @@ def normalize_url(raw_url: str | None) -> str | None:
     if not url:
         return None
 
-    if "://" not in url and "." in url.split("/")[0] and not url.startswith(
-        ("http", "ftp", "javascript", "data")
+    if (
+        "://" not in url
+        and "." in url.split("/")[0]
+        and not url.startswith(("http", "ftp", "javascript", "data"))
     ):
         url = f"https://{url}"
 
@@ -93,9 +95,7 @@ class WebsiteChecker:
         """Close the HTTP client."""
         await self.client.aclose()
 
-    async def check_website(
-        self, business_id: int, raw_url: str | None
-    ) -> WebsiteCheckResult:
+    async def check_website(self, business_id: int, raw_url: str | None) -> WebsiteCheckResult:
         """Perform an objective check of a single website."""
         async with self._semaphore:
             return await self._check_website_internal(business_id, raw_url)
@@ -105,15 +105,11 @@ class WebsiteChecker:
     ) -> WebsiteCheckResult:
         original_url = raw_url.strip() if raw_url else None
         if not original_url:
-            return self._build_result(
-                business_id, original_url, None, WebsiteStatus.NO_WEBSITE
-            )
+            return self._build_result(business_id, original_url, None, WebsiteStatus.NO_WEBSITE)
 
         normalized_url = normalize_url(original_url)
         if not normalized_url:
-            return self._build_result(
-                business_id, original_url, None, WebsiteStatus.INVALID_URL
-            )
+            return self._build_result(business_id, original_url, None, WebsiteStatus.INVALID_URL)
 
         start_time = time.monotonic()
         try:

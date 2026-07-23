@@ -17,6 +17,7 @@ def test_normalize_url():
     assert normalize_url("") is None
     assert normalize_url(None) is None
 
+
 @pytest.fixture
 async def checker():
     config = WebsiteCheckConfig(
@@ -29,11 +30,13 @@ async def checker():
     yield chk
     await chk.close()
 
+
 @pytest.mark.asyncio
 async def test_check_missing_website(checker):
     result = await checker.check_website(1, None)
     assert result.status == WebsiteStatus.NO_WEBSITE
     assert result.normalized_url is None
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -45,6 +48,7 @@ async def test_check_working(checker):
     assert result.status == WebsiteStatus.WORKING
     assert result.http_status == 200
     assert result.content_type == "text/html"
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -61,6 +65,7 @@ async def test_check_redirect_followed(checker):
     assert str(result.final_url) == "https://final.com/"
     assert result.redirect_count == 1
 
+
 @pytest.mark.asyncio
 async def test_check_invalid_urls(checker):
     # Requirement 4 & 5: Malformed and unsupported schemes (no network request made)
@@ -76,6 +81,7 @@ async def test_check_invalid_urls(checker):
         assert result.status == WebsiteStatus.INVALID_URL
         assert result.normalized_url is None
 
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_check_normalized_url(checker):
@@ -87,6 +93,7 @@ async def test_check_normalized_url(checker):
     assert result.normalized_url == "https://example.com"
     assert result.status == WebsiteStatus.WORKING
 
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_check_404(checker):
@@ -94,6 +101,7 @@ async def test_check_404(checker):
     result = await checker.check_website(1, "https://example.com")
     assert result.status == WebsiteStatus.HTTP_ERROR
     assert result.http_status == 404
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -103,6 +111,7 @@ async def test_check_500(checker):
     assert result.status == WebsiteStatus.HTTP_ERROR
     assert result.http_status == 500
 
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_check_blocked(checker):
@@ -111,6 +120,7 @@ async def test_check_blocked(checker):
     assert result.status == WebsiteStatus.BLOCKED
     assert result.http_status == 403
 
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_check_timeout(checker):
@@ -118,12 +128,14 @@ async def test_check_timeout(checker):
     result = await checker.check_website(1, "https://example.com")
     assert result.status == WebsiteStatus.TIMEOUT
 
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_check_dns_error(checker):
     respx.get("https://example.com").mock(side_effect=httpx.ConnectError("NameResolutionError"))
     result = await checker.check_website(1, "https://example.com")
     assert result.status == WebsiteStatus.DNS_ERROR
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -134,6 +146,7 @@ async def test_check_ssl_error(checker):
     result = await checker.check_website(1, "https://example.com")
     assert result.status == WebsiteStatus.SSL_ERROR
 
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_check_unreachable(checker):
@@ -141,12 +154,14 @@ async def test_check_unreachable(checker):
     result = await checker.check_website(1, "https://example.com")
     assert result.status == WebsiteStatus.UNREACHABLE
 
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_check_redirect_loop(checker):
     respx.get("https://example.com").mock(side_effect=httpx.TooManyRedirects("Exceeded"))
     result = await checker.check_website(1, "https://example.com")
     assert result.status == WebsiteStatus.REDIRECT_LOOP
+
 
 @pytest.mark.asyncio
 async def test_concurrency_limit(checker):

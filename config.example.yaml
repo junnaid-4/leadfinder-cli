@@ -44,3 +44,33 @@ logging:
   directory: "logs"
   console: true
   file: true
+
+lead_scoring:
+  enabled: true
+  weights:
+    no_website: 40
+    unreachable: 30
+    dns_error: 30
+    ssl_error: 25
+    redirect_loop: 25
+    timeout: 20
+    http_5xx: 25
+    http_4xx: 15
+    blocked: 5
+    invalid_url: 20
+    unknown_error: 10
+    phone_present: 10
+    phone_missing: -10
+    rating_high: 10
+    rating_medium: 5
+    reviews_high: 15
+    reviews_medium: 10
+    reviews_low: 5
+    address_present: 5
+    missing_name: -20
+    temporarily_closed: -20
+  thresholds:
+    very_high: 80
+    high: 60
+    medium: 40
+    low: 20
