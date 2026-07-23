@@ -136,7 +136,7 @@ Exports include deterministic sorting, configurable filters, stable column order
 
 ## Requirements
 
-* Python 3.11 or newer
+* Python 3.12 or newer
 * Git
 * A Google Places API key for Google-based collection
 * A billing-enabled Google Cloud project when using Google Places
@@ -195,7 +195,7 @@ cp .env.example .env
 Add your API key to `.env`:
 
 ```env
-GOOGLE_PLACES_API_KEY=your_api_key_here
+GOOGLE_MAPS_API_KEY=your_api_key_here
 ```
 
 Never commit `.env`, `config.yaml`, local databases, or exported lead files.
