@@ -65,22 +65,19 @@ CREATE TABLE IF NOT EXISTS businesses (
 
 CREATE TABLE IF NOT EXISTS website_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    place_id TEXT NOT NULL,
+    business_id INTEGER NOT NULL,
     original_url TEXT,
+    normalized_url TEXT,
     final_url TEXT,
-    initial_status_code INTEGER,
-    final_status_code INTEGER,
+    status TEXT NOT NULL,
+    http_status INTEGER,
     redirect_count INTEGER NOT NULL DEFAULT 0,
     response_time_ms INTEGER,
     content_type TEXT,
-    check_attempts INTEGER NOT NULL DEFAULT 0,
-    issue_type TEXT,
-    issue_description TEXT,
-    important_broken_page TEXT,
-    lead_category TEXT NOT NULL DEFAULT 'UNCHECKED',
-    checked_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (place_id) REFERENCES businesses(place_id) ON DELETE CASCADE
+    error_type TEXT,
+    error_message TEXT,
+    checked_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS cached_api_responses (
@@ -93,7 +90,9 @@ CREATE TABLE IF NOT EXISTS cached_api_responses (
 );
 
 CREATE INDEX IF NOT EXISTS idx_businesses_place_id ON businesses(place_id);
-CREATE INDEX IF NOT EXISTS idx_website_checks_place_id ON website_checks(place_id);
+CREATE INDEX IF NOT EXISTS idx_website_checks_business_id ON website_checks(business_id);
+CREATE INDEX IF NOT EXISTS idx_website_checks_status ON website_checks(status);
+CREATE INDEX IF NOT EXISTS idx_website_checks_checked_at ON website_checks(checked_at);
 CREATE INDEX IF NOT EXISTS idx_cached_api_expires ON cached_api_responses(expires_at);
 CREATE INDEX IF NOT EXISTS idx_search_queries_run_id ON search_queries(search_run_id);
 """
@@ -124,6 +123,7 @@ class Database:
     def initialize(self) -> int:
         """Create schema if missing and return schema version."""
         connection = self.connect()
+        self._migrate_website_checks_schema(connection)
         connection.executescript(CREATE_TABLES_SQL)
         version = self.get_schema_version(connection)
         if version is None:
@@ -138,6 +138,58 @@ class Database:
             raise RuntimeError(msg)
         connection.commit()
         return version
+
+    def _migrate_website_checks_schema(self, connection: sqlite3.Connection) -> None:
+        """Migrate the website_checks table from Stage 1/2 to Stage 3 safely."""
+        cursor = connection.execute("PRAGMA table_info(website_checks)")
+        columns = {row["name"] for row in cursor.fetchall()}
+
+        if not columns or "business_id" in columns:
+            return  # Either doesn't exist yet or is already the new schema
+
+        # Old schema has 'place_id'. We create a new table, copy data, and swap.
+        connection.execute(
+            """
+            CREATE TABLE website_checks_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id INTEGER NOT NULL,
+                original_url TEXT,
+                normalized_url TEXT,
+                final_url TEXT,
+                status TEXT NOT NULL,
+                http_status INTEGER,
+                redirect_count INTEGER NOT NULL DEFAULT 0,
+                response_time_ms INTEGER,
+                content_type TEXT,
+                error_type TEXT,
+                error_message TEXT,
+                checked_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            INSERT INTO website_checks_new (
+                business_id, original_url, normalized_url, final_url, status,
+                http_status, redirect_count, response_time_ms, content_type,
+                error_type, error_message, checked_at
+            )
+            SELECT
+                b.id, wc.original_url, wc.original_url, wc.final_url,
+                COALESCE(wc.issue_type, 'unknown_error'),
+                wc.final_status_code, wc.redirect_count, wc.response_time_ms,
+                wc.content_type, wc.issue_type, wc.issue_description,
+                COALESCE(wc.checked_at, wc.created_at)
+            FROM website_checks wc
+            JOIN businesses b ON b.place_id = wc.place_id
+            """
+        )
+
+        connection.execute("DROP TABLE website_checks")
+        connection.execute("ALTER TABLE website_checks_new RENAME TO website_checks")
+        connection.commit()
 
     @staticmethod
     def get_schema_version(connection: sqlite3.Connection) -> int | None:
@@ -324,6 +376,61 @@ class Database:
             VALUES (?, ?, ?, ?)
             """,
             (run_id, query, location, results_returned),
+        )
+        self.commit()
+
+    def get_businesses_needing_checks(self, force_refresh: bool = False) -> list[sqlite3.Row]:
+        """Return businesses needing website checks."""
+        sql = """
+            SELECT id, place_id, business_name, website_url
+            FROM businesses
+        """
+        if not force_refresh:
+            sql += """
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM website_checks
+                    WHERE website_checks.business_id = businesses.id
+                )
+            """
+        cursor = self.execute(sql)
+        return cursor.fetchall()
+
+    def save_website_check_result(
+        self,
+        business_id: int,
+        original_url: str | None,
+        normalized_url: str | None,
+        final_url: str | None,
+        status: str,
+        http_status: int | None,
+        redirect_count: int,
+        response_time_ms: int | None,
+        content_type: str | None,
+        error_type: str | None,
+        error_message: str | None,
+    ) -> None:
+        self.execute(
+            """
+            INSERT INTO website_checks (
+                business_id, original_url, normalized_url, final_url, status,
+                http_status, redirect_count, response_time_ms, content_type,
+                error_type, error_message, checked_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (
+                business_id,
+                original_url,
+                normalized_url,
+                final_url,
+                status,
+                http_status,
+                redirect_count,
+                response_time_ms,
+                content_type,
+                error_type,
+                error_message,
+            ),
         )
         self.commit()
 

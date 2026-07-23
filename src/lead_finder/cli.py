@@ -6,7 +6,7 @@ import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -240,11 +240,84 @@ def check_websites(
         typer.Option("--force-refresh", help="Re-check websites ignoring cache."),
     ] = False,
 ) -> None:
-    """Check business websites (placeholder)."""
-    _resolve_config(config)
-    if force_refresh:
-        console.print("Force refresh requested.", highlight=False)
-    _not_implemented("check-websites")
+    """Check business websites for availability and classify them."""
+    app_config = _resolve_config(config)
+    setup_logging(app_config)
+
+    if not app_config.website_check.enabled:
+        console.print("[yellow]Website checking is disabled in configuration.[/yellow]")
+        return
+
+    db = init_database(app_config.database_path())
+    businesses = db.get_businesses_needing_checks(force_refresh=force_refresh)
+
+    if not businesses:
+        console.print("No businesses need website checking.")
+        return
+
+    console.print(f"Checking {len(businesses)} websites...")
+
+    from lead_finder.website_checker import WebsiteChecker, WebsiteStatus
+
+    checker = WebsiteChecker(app_config.website_check)
+    counts = {status: 0 for status in WebsiteStatus}
+
+    async def _process_all() -> None:
+        async def _check_and_save(business_row: Any) -> None:
+            b_id = business_row["id"]
+            name = business_row["business_name"]
+            url = business_row["website_url"]
+            try:
+                result = await checker.check_website(b_id, url)
+                db.save_website_check_result(
+                    business_id=result.business_id,
+                    original_url=result.original_url,
+                    normalized_url=result.normalized_url,
+                    final_url=result.final_url,
+                    status=result.status.value,
+                    http_status=result.http_status,
+                    redirect_count=result.redirect_count,
+                    response_time_ms=result.response_time_ms,
+                    content_type=result.content_type,
+                    error_type=result.error_type,
+                    error_message=result.error_message,
+                )
+                counts[result.status] += 1
+            except Exception as e:
+                console.print(f"[red]Error checking {name}: {e}[/red]")
+                counts[WebsiteStatus.UNKNOWN_ERROR] += 1
+
+        tasks = [_check_and_save(row) for row in businesses]
+        await asyncio.gather(*tasks)
+        await checker.close()
+
+    try:
+        asyncio.run(_process_all())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Website checking interrupted.[/yellow]")
+
+    summary_labels = {
+        WebsiteStatus.NO_WEBSITE: "No website",
+        WebsiteStatus.WORKING: "Working",
+        WebsiteStatus.UNREACHABLE: "Unreachable",
+        WebsiteStatus.TIMEOUT: "Timeout",
+        WebsiteStatus.DNS_ERROR: "DNS errors",
+        WebsiteStatus.SSL_ERROR: "SSL errors",
+        WebsiteStatus.HTTP_ERROR: "HTTP errors",
+        WebsiteStatus.BLOCKED: "Blocked",
+        WebsiteStatus.INVALID_URL: "Invalid URLs",
+        WebsiteStatus.REDIRECT_LOOP: "Redirect loop",
+        WebsiteStatus.UNKNOWN_ERROR: "Other failures",
+    }
+
+    console.print("\n[bold]Website Check Summary[/bold]")
+    console.print(f"Businesses processed: {len(businesses)}")
+    for status, label in summary_labels.items():
+        count = counts[status]
+        if count > 0:
+            console.print(f"{label}: {count}")
+
+    console.print(f"Database path: {app_config.database_path()}")
 
 
 @app.command()
