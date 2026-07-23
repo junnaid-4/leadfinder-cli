@@ -74,3 +74,10 @@ lead_scoring:
     high: 60
     medium: 40
     low: 20
+
+export:
+  default_format: csv
+  output_directory: exports
+  include_unscored: false
+  minimum_score: 0
+  priorities: []

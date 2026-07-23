@@ -14,6 +14,7 @@ from rich.console import Console
 
 from lead_finder.config import AppConfig, EnvSettings, load_config
 from lead_finder.database import init_database
+from lead_finder.exporter import LeadExportRow, export_to_csv, export_to_xlsx
 from lead_finder.lead_scoring import (
     SCORING_VERSION,
     BusinessScoringInput,
@@ -597,6 +598,191 @@ def run(
     if force_refresh:
         console.print("Force refresh requested.", highlight=False)
     _not_implemented("run")
+
+
+@app.command("export-leads")
+def export_leads(
+    config: Annotated[
+        Path,
+        typer.Option("--config", "-c", help="Path to YAML configuration file."),
+    ] = Path("config.yaml"),
+    fmt: Annotated[
+        str | None,
+        typer.Option("--format", help="Export format (csv or xlsx)."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Output file path."),
+    ] = None,
+    min_score: Annotated[
+        int | None,
+        typer.Option("--min-score", help="Minimum lead score to include."),
+    ] = None,
+    priority: Annotated[
+        list[str] | None,
+        typer.Option("--priority", help="Priorities to include."),
+    ] = None,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", help="Maximum number of rows to export."),
+    ] = None,
+    include_unscored: Annotated[
+        bool | None,
+        typer.Option("--include-unscored/--exclude-unscored", help="Include unscored businesses."),
+    ] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option("--overwrite", help="Overwrite the output file if it exists."),
+    ] = False,
+) -> None:
+    """Export leads to a CSV or XLSX file."""
+    app_config = _resolve_config(config)
+    setup_logging(app_config)
+
+    # Priority mapping for sorting: lower index means higher priority
+    priority_order = {
+        "very_high": 0,
+        "high": 1,
+        "medium": 2,
+        "low": 3,
+        "very_low": 4,
+        None: 5,  # Unscored
+    }
+    export_cfg = app_config.export
+
+    # Resolve format
+    resolved_format = fmt.lower() if fmt is not None else export_cfg.default_format
+    if resolved_format not in ("csv", "xlsx"):
+        console.print(
+            f"Error: Invalid format '{resolved_format}'. Must be 'csv' or 'xlsx'.",
+            style="red",
+        )
+        raise typer.Exit(1)
+
+    # Resolve output path
+    if output is None:
+        out_name = f"leads.{resolved_format}"
+        output_path = app_config.export_directory() / out_name
+    else:
+        output_path = output
+
+    if output_path.is_dir():
+        console.print(
+            "Error: Output path is a directory, not a file.",
+            style="red",
+        )
+        raise typer.Exit(1)
+    # Apply default suffix if missing
+    if not output_path.suffix:
+        output_path = output_path.with_suffix(f".{resolved_format}")
+
+    # Check format and suffix mismatch
+    if (resolved_format == "csv" and output_path.suffix.lower() != ".csv") or \
+       (resolved_format == "xlsx" and output_path.suffix.lower() != ".xlsx"):
+        console.print(
+            "Error: Output file suffix does not match the chosen format.",
+            style="red",
+        )
+        raise typer.Exit(1)
+
+    output_path = output_path.resolve()
+    # Create missing parent directories
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if output_path.exists() and not overwrite:
+        console.print(
+            f"Error: Output file '{output_path}' already exists. Use --overwrite.",
+            style="red",
+        )
+        raise typer.Exit(1)
+
+    # Resolve filtering parameters
+    resolved_min_score = min_score if min_score is not None else export_cfg.minimum_score
+    resolved_priorities = [p.lower() for p in priority] if priority else export_cfg.priorities
+    resolved_include_unscored = (
+        include_unscored if include_unscored is not None else export_cfg.include_unscored
+    )
+
+    db = init_database(app_config.database_path())
+
+    try:
+        candidates_count = db.count_candidate_businesses()
+        db_rows = db.get_leads_for_export()
+    finally:
+        db.close()
+
+    export_rows: list[LeadExportRow] = []
+
+    for row in db_rows:
+        e_row = LeadExportRow.from_sqlite_row(row)
+
+        # Scored items checking
+        if e_row.final_score is not None:
+            if e_row.final_score < resolved_min_score:
+                continue
+            if resolved_priorities and e_row.priority not in resolved_priorities:
+                continue
+        else:
+            # Unscored row checking
+            if not resolved_include_unscored:
+                continue
+            # Drop unscored unless 'unscored' is explicitly in priorities
+            if resolved_priorities and "unscored" not in resolved_priorities:
+                continue
+            # Exclude ineligible businesses
+            if (
+                e_row.business_status in ("CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY")
+                or not e_row.place_id
+            ):
+                continue
+
+        export_rows.append(e_row)
+    # Deterministic sorting
+    # 1. priority (very_high down to unscored)
+    # 2. final score descending
+    # 3. review count descending
+    # 4. business name ascending
+    # 5. business ID ascending
+    export_rows.sort(key=lambda r: (
+        priority_order.get(r.priority, 5),
+        -(r.final_score if r.final_score is not None else -1),
+        -(r.review_count if r.review_count is not None else -1),
+        r.business_name.lower(),
+        r.business_id
+    ))
+    if limit is not None and limit > 0:
+        export_rows = export_rows[:limit]
+
+    if not export_rows:
+        console.print("No businesses matched the export filters.", style="yellow")
+        console.print(f"Businesses considered: {candidates_count}")
+        console.print("Rows matching filters: 0")
+        raise typer.Exit()
+
+    # Write output
+    try:
+        if resolved_format == "csv":
+            export_to_csv(export_rows, output_path)
+        else:
+            export_to_xlsx(export_rows, output_path)
+    except Exception as e:
+        console.print(f"Failed to export: {e}", style="red")
+        raise typer.Exit(1) from e
+
+    unscored_included = sum(1 for r in export_rows if r.final_score is None)
+    filtered_out = candidates_count - len(export_rows)
+    pri_text = ", ".join(resolved_priorities) if resolved_priorities else "all"
+
+    console.print("Export completed successfully.", style="green")
+    console.print(f"Businesses considered: {candidates_count}")
+    console.print(f"Rows exported: {len(export_rows)}")
+    console.print(f"Unscored rows included: {unscored_included}")
+    console.print(f"Filtered-out rows: {filtered_out}")
+    console.print(f"Minimum score filter: {resolved_min_score}")
+    console.print(f"Included priorities: {pri_text}")
+    console.print(f"Format: {resolved_format}")
+    typer.echo(f"Output file: {output_path}")
+    typer.echo(f"Database path: {app_config.database_path().resolve()}")
 
 
 def main() -> None:

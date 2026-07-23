@@ -541,6 +541,57 @@ class Database:
         )
         self.commit()
 
+    def count_candidate_businesses(self) -> int:
+        """Return the total number of businesses considered for export."""
+        cursor = self.execute("SELECT count(*) FROM businesses")
+        row = cursor.fetchone()
+        if row is None:
+            return 0
+        return int(row[0])
+
+    def get_leads_for_export(self) -> list[sqlite3.Row]:
+        """Fetch all businesses with their latest website checks and lead scores."""
+        sql = """
+            SELECT
+                b.id as business_id,
+                b.place_id,
+                b.business_name,
+                b.phone,
+                b.address,
+                b.rating,
+                b.review_count,
+                b.business_status,
+                wc.original_url as website_original_url,
+                wc.normalized_url as website_normalized_url,
+                wc.final_url as website_final_url,
+                wc.status as website_status,
+                wc.http_status,
+                wc.checked_at as website_checked_at,
+                ls.raw_score,
+                ls.final_score,
+                ls.priority,
+                ls.scoring_version,
+                ls.score_breakdown_json,
+                ls.scored_at,
+                b.search_query as discovery_queries,
+                b.google_maps_url
+            FROM businesses b
+            LEFT JOIN website_checks wc ON wc.id = (
+                SELECT id FROM website_checks
+                WHERE business_id = b.id
+                ORDER BY checked_at DESC, id DESC
+                LIMIT 1
+            )
+            LEFT JOIN lead_scores ls ON ls.id = (
+                SELECT id FROM lead_scores
+                WHERE business_id = b.id
+                ORDER BY scored_at DESC, id DESC
+                LIMIT 1
+            )
+        """
+        cursor = self.execute(sql)
+        return cursor.fetchall()
+
 
 def init_database(path: Path) -> Database:
     """Initialize database at the given path."""

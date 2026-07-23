@@ -162,6 +162,35 @@ class LeadScoringConfig(BaseModel):
     thresholds: LeadScoringThresholdsConfig = Field(default_factory=LeadScoringThresholdsConfig)
 
 
+class ExportConfig(BaseModel):
+    """Export configuration."""
+
+    default_format: str = "csv"
+    output_directory: str = "exports"
+    include_unscored: bool = False
+    minimum_score: int = Field(default=0, ge=0, le=100)
+    priorities: list[str] = Field(default_factory=list)
+
+    @field_validator("default_format")
+    @classmethod
+    def validate_format(cls, value: str) -> str:
+        fmt = value.lower()
+        if fmt not in ("csv", "xlsx"):
+            msg = f"Invalid default_format: {value}. Must be 'csv' or 'xlsx'."
+            raise ValueError(msg)
+        return fmt
+
+    @field_validator("priorities")
+    @classmethod
+    def validate_priorities(cls, value: list[str]) -> list[str]:
+        valid = {"very_high", "high", "medium", "low", "very_low"}
+        for p in value:
+            if p.lower() not in valid:
+                msg = f"Invalid priority: {p}. Must be one of {sorted(valid)}."
+                raise ValueError(msg)
+        return [p.lower() for p in value]
+
+
 class AppConfig(BaseModel):
     """Full application configuration from YAML."""
 
@@ -174,9 +203,13 @@ class AppConfig(BaseModel):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     logging: LoggingConfigSection = Field(default_factory=LoggingConfigSection)
     lead_scoring: LeadScoringConfig = Field(default_factory=LeadScoringConfig)
+    export: ExportConfig = Field(default_factory=ExportConfig)
 
     def output_directory(self) -> Path:
         return Path(self.output.directory)
+
+    def export_directory(self) -> Path:
+        return Path(self.export.output_directory)
 
     def database_path(self) -> Path:
         return Path(self.database.path).resolve()
