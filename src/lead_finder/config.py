@@ -37,10 +37,7 @@ class SearchConfig(BaseModel):
     @model_validator(mode="after")
     def validate_result_limits(self) -> SearchConfig:
         if self.max_total_results < self.max_results_per_query:
-            msg = (
-                "max_total_results must be greater than or equal to "
-                "max_results_per_query."
-            )
+            msg = "max_total_results must be greater than or equal to max_results_per_query."
             raise ValueError(msg)
         return self
 
@@ -127,7 +124,7 @@ class AppConfig(BaseModel):
         return Path(self.output.directory)
 
     def database_path(self) -> Path:
-        return Path(self.database.path)
+        return Path(self.database.path).resolve()
 
     def logs_directory(self) -> Path:
         return Path(self.logging.directory)
@@ -146,10 +143,7 @@ class EnvSettings(BaseSettings):
 
     def require_api_key(self) -> str:
         if not self.google_maps_api_key or self.google_maps_api_key.strip() == "":
-            msg = (
-                "GOOGLE_MAPS_API_KEY is not set. "
-                "Copy .env.example to .env and add your API key."
-            )
+            msg = "GOOGLE_MAPS_API_KEY is not set. Copy .env.example to .env and add your API key."
             raise ValueError(msg)
         if self.google_maps_api_key == "your_api_key_here":
             msg = "GOOGLE_MAPS_API_KEY is still set to the placeholder value."

@@ -139,5 +139,5 @@ def test_app_config_path_helpers(valid_config_data: dict) -> None:
     config = AppConfig.model_validate(valid_config_data)
 
     assert config.output_directory() == Path("output")
-    assert config.database_path() == Path("data/test.db")
+    assert config.database_path() == Path("data/test.db").resolve()
     assert config.logs_directory() == Path("logs")

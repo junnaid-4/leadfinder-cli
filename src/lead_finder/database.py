@@ -134,10 +134,7 @@ class Database:
             connection.commit()
             return SCHEMA_VERSION
         if version != SCHEMA_VERSION:
-            msg = (
-                f"Unsupported schema version {version}. "
-                f"Expected version {SCHEMA_VERSION}."
-            )
+            msg = f"Unsupported schema version {version}. Expected version {SCHEMA_VERSION}."
             raise RuntimeError(msg)
         connection.commit()
         return version
@@ -172,6 +169,163 @@ class Database:
         """Commit pending changes."""
         connection = self.connect()
         connection.commit()
+
+    def get_cached_api_response(self, cache_key: str) -> str | None:
+        cursor = self.execute(
+            "SELECT response_body FROM cached_api_responses "
+            "WHERE cache_key = ? AND expires_at > datetime('now')",
+            (cache_key,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def save_cached_api_response(
+        self, cache_key: str, endpoint: str, response_body: str, expires_at: str
+    ) -> None:
+        self.execute(
+            """
+            INSERT INTO cached_api_responses (
+                cache_key, endpoint, response_body, created_at, expires_at
+            )
+            VALUES (?, ?, ?, datetime('now'), ?)
+            ON CONFLICT(cache_key) DO UPDATE SET
+                response_body=excluded.response_body,
+                created_at=excluded.created_at,
+                expires_at=excluded.expires_at
+            """,
+            (cache_key, endpoint, response_body, expires_at),
+        )
+        self.commit()
+
+    def insert_or_update_business(
+        self,
+        place_id: str,
+        name: str,
+        query: str,
+        location: str,
+        data: dict[str, Any],
+    ) -> bool:
+        """Insert or update a business if it exists. Returns True if inserted."""
+        cursor = self.execute("SELECT id FROM businesses WHERE place_id = ?", (place_id,))
+        exists = cursor.fetchone() is not None
+
+        category = data.get("primaryType")
+        types_list = data.get("types", [])
+        additional = ",".join(types_list) if types_list else None
+
+        rating = data.get("rating")
+        review_count = data.get("userRatingCount")
+
+        opening_hours = data.get("currentOpeningHours")
+        if opening_hours:
+            open_status = "open" if opening_hours.get("openNow") else "closed"
+        else:
+            open_status = None
+
+        if not exists:
+            self.execute(
+                """
+                INSERT INTO businesses (
+                    place_id, business_name, category, additional_categories,
+                    address, phone, international_phone, google_maps_url,
+                    website_url, rating, review_count, business_status,
+                    opening_hours_status, search_query, search_location, collected_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    place_id,
+                    name,
+                    category,
+                    additional,
+                    data.get("formattedAddress"),
+                    data.get("nationalPhoneNumber"),
+                    data.get("internationalPhoneNumber"),
+                    data.get("googleMapsUri"),
+                    data.get("websiteUri"),
+                    rating,
+                    review_count,
+                    data.get("businessStatus"),
+                    open_status,
+                    query,
+                    location,
+                ),
+            )
+            return True
+        else:
+            self.execute(
+                """
+                UPDATE businesses
+                SET
+                    business_name = COALESCE(NULLIF(?, ''), business_name),
+                    category = COALESCE(NULLIF(?, ''), category),
+                    additional_categories = COALESCE(NULLIF(?, ''), additional_categories),
+                    address = COALESCE(NULLIF(?, ''), address),
+                    phone = COALESCE(NULLIF(?, ''), phone),
+                    international_phone = COALESCE(NULLIF(?, ''), international_phone),
+                    google_maps_url = COALESCE(NULLIF(?, ''), google_maps_url),
+                    website_url = COALESCE(NULLIF(?, ''), website_url),
+                    rating = COALESCE(?, rating),
+                    review_count = COALESCE(?, review_count),
+                    business_status = COALESCE(NULLIF(?, ''), business_status),
+                    updated_at = datetime('now')
+                WHERE place_id = ?
+                """,
+                (
+                    name,
+                    category,
+                    additional,
+                    data.get("formattedAddress"),
+                    data.get("nationalPhoneNumber"),
+                    data.get("internationalPhoneNumber"),
+                    data.get("googleMapsUri"),
+                    data.get("websiteUri"),
+                    rating,
+                    review_count,
+                    data.get("businessStatus"),
+                    place_id,
+                ),
+            )
+            return False
+
+    def create_search_run(self, config_name: str, location: str, dry_run: bool) -> int:
+        cursor = self.execute(
+            """
+            INSERT INTO search_runs (config_name, search_location, status, started_at, dry_run)
+            VALUES (?, ?, 'RUNNING', datetime('now'), ?)
+            """,
+            (config_name, location, 1 if dry_run else 0),
+        )
+        self.commit()
+        return int(cursor.lastrowid) if cursor.lastrowid else 0
+
+    def update_search_run(
+        self, run_id: int, status: str, discovered: int, duplicates: int, api_requests: int
+    ) -> None:
+        self.execute(
+            """
+            UPDATE search_runs
+            SET status = ?,
+                finished_at = datetime('now'),
+                businesses_discovered = businesses_discovered + ?,
+                duplicates_removed = duplicates_removed + ?,
+                api_requests_used = api_requests_used + ?
+            WHERE id = ?
+            """,
+            (status, discovered, duplicates, api_requests, run_id),
+        )
+        self.commit()
+
+    def add_search_query_log(
+        self, run_id: int, query: str, location: str, results_returned: int
+    ) -> None:
+        self.execute(
+            """
+            INSERT INTO search_queries (search_run_id, query_text, location, results_returned)
+            VALUES (?, ?, ?, ?)
+            """,
+            (run_id, query, location, results_returned),
+        )
+        self.commit()
 
 
 def init_database(path: Path) -> Database:

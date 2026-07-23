@@ -42,14 +42,20 @@ def setup_logging(
     *,
     run_id: str | None = None,
 ) -> logging.Logger:
-    """Configure root logging based on application config."""
+    """Configure lead_finder logging based on application config."""
     log_dir = config.logs_directory()
     log_dir.mkdir(parents=True, exist_ok=True)
 
     level = _resolve_log_level(config.logging.level)
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.setLevel(level)
+    logger = logging.getLogger("lead_finder")
+
+    # Clear and close existing handlers owned by this logger
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        handler.close()
+
+    logger.setLevel(level)
+    logger.propagate = False
 
     formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
     secret_filter = SecretRedactingFilter()
@@ -58,7 +64,7 @@ def setup_logging(
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
         console_handler.addFilter(secret_filter)
-        root_logger.addHandler(console_handler)
+        logger.addHandler(console_handler)
 
     if config.logging.file:
         timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
@@ -72,9 +78,8 @@ def setup_logging(
         )
         file_handler.setFormatter(formatter)
         file_handler.addFilter(secret_filter)
-        root_logger.addHandler(file_handler)
+        logger.addHandler(file_handler)
 
-    logger = logging.getLogger("lead_finder")
     logger.debug("Logging configured at level %s", config.logging.level)
     return logger
 
