@@ -69,7 +69,7 @@ def sample_rows() -> list[LeadExportRow]:
             scored_at=None,
             discovery_queries=None,
             google_maps_url=None,
-        )
+        ),
     ]
 
 
@@ -85,7 +85,7 @@ def test_sanitize_spreadsheet_text() -> None:
 
 def test_format_breakdown() -> None:
     assert format_breakdown(None) is None
-    assert format_breakdown('invalid json') is None
+    assert format_breakdown("invalid json") is None
     assert format_breakdown('{"a": 1, "b": 2}') == '{"a":1,"b":2}'
 
 
@@ -173,9 +173,9 @@ def test_export_to_xlsx_success(tmp_path: Path, sample_rows: list[LeadExportRow]
     # Numeric types
     assert isinstance(ws["A2"].value, int)  # business_id
     assert ws["A2"].value == 1
-    assert isinstance(ws["F2"].value, float) # rating
+    assert isinstance(ws["F2"].value, float)  # rating
     assert ws["F2"].value == 4.5
-    assert isinstance(ws["M2"].value, int) # http_status
+    assert isinstance(ws["M2"].value, int)  # http_status
     assert ws["M2"].value == 200
 
     wb.close()

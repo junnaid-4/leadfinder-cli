@@ -199,8 +199,7 @@ lead_scoring:
 
     db = init_database(db_path)
     score_row = db.execute(
-        "SELECT raw_score, score_breakdown_json "
-        "FROM lead_scores WHERE business_id = 1"
+        "SELECT raw_score, score_breakdown_json FROM lead_scores WHERE business_id = 1"
     ).fetchone()
     db.close()
 

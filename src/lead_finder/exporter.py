@@ -171,7 +171,8 @@ def export_to_xlsx(rows: list[LeadExportRow], output_path: Path) -> None:
     temp_path = Path(temp_path_str)
 
     import os
-    os.close(fd) # openpyxl needs to open it by filename, so close the fd
+
+    os.close(fd)  # openpyxl needs to open it by filename, so close the fd
 
     try:
         wb = openpyxl.Workbook()

@@ -169,8 +169,8 @@ def test_export_leads_basic_csv(temp_config: Path, tmp_path: Path) -> None:
 
     # Check content to verify latest score / website check
     content = csv_file.read_text()
-    assert "working" in content # latest website check for B1 and B2
-    assert "high" in content # latest score for B1
+    assert "working" in content  # latest website check for B1 and B2
+    assert "high" in content  # latest score for B1
 
 
 def test_export_leads_limit_applied_after_sorting(temp_config: Path, tmp_path: Path) -> None:
@@ -204,7 +204,7 @@ def test_export_leads_include_unscored(temp_config: Path, tmp_path: Path) -> Non
         ],
     )
     assert result.exit_code == 0
-    assert "Rows exported: 3" in result.stdout # B1, B2, B4 (B3 is closed)
+    assert "Rows exported: 3" in result.stdout  # B1, B2, B4 (B3 is closed)
     assert "Unscored rows included: 1" in result.stdout
 
     content = (tmp_path / "exports" / "leads.csv").read_text()
@@ -387,4 +387,4 @@ def test_export_leads_database_unchanged(temp_config: Path, temp_db: Path) -> No
     )
     assert result.exit_code == 0
     db2 = temp_db.read_bytes()
-    assert db1 == db2 # Read only operation
+    assert db1 == db2  # Read only operation

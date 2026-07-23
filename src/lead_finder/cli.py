@@ -677,8 +677,9 @@ def export_leads(
         output_path = output_path.with_suffix(f".{resolved_format}")
 
     # Check format and suffix mismatch
-    if (resolved_format == "csv" and output_path.suffix.lower() != ".csv") or \
-       (resolved_format == "xlsx" and output_path.suffix.lower() != ".xlsx"):
+    if (resolved_format == "csv" and output_path.suffix.lower() != ".csv") or (
+        resolved_format == "xlsx" and output_path.suffix.lower() != ".xlsx"
+    ):
         console.print(
             "Error: Output file suffix does not match the chosen format.",
             style="red",
@@ -743,13 +744,15 @@ def export_leads(
     # 3. review count descending
     # 4. business name ascending
     # 5. business ID ascending
-    export_rows.sort(key=lambda r: (
-        priority_order.get(r.priority, 5),
-        -(r.final_score if r.final_score is not None else -1),
-        -(r.review_count if r.review_count is not None else -1),
-        r.business_name.lower(),
-        r.business_id
-    ))
+    export_rows.sort(
+        key=lambda r: (
+            priority_order.get(r.priority, 5),
+            -(r.final_score if r.final_score is not None else -1),
+            -(r.review_count if r.review_count is not None else -1),
+            r.business_name.lower(),
+            r.business_id,
+        )
+    )
     if limit is not None and limit > 0:
         export_rows = export_rows[:limit]
 
