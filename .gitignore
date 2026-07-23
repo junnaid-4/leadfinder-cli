@@ -36,3 +36,4 @@ output/*.csv
 *.swp
 *.swo
 config.yaml
+exports/
