@@ -35,3 +35,4 @@ output/*.csv
 .vscode/
 *.swp
 *.swo
+config.yaml
