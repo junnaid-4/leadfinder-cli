@@ -13,7 +13,7 @@ runner = CliRunner()
 def temp_db(tmp_path: Path) -> Path:
     db_path = tmp_path / "test.db"
     db = init_database(db_path)
-    
+
     # Insert businesses
     db.execute(
         "INSERT INTO businesses (place_id, business_name, business_status, review_count) VALUES "
@@ -22,7 +22,7 @@ def temp_db(tmp_path: Path) -> Path:
         "('P3', 'Business C', 'CLOSED_PERMANENTLY', 30),"
         "('P4', 'Business D', 'OPERATIONAL', 40)"
     )
-    
+
     # Insert website checks (testing latest selection & ID resolution)
     # Business 1 has two checks
     db.save_website_check_result(
@@ -39,7 +39,7 @@ def temp_db(tmp_path: Path) -> Path:
         error_message=None,
     )
     db.execute("UPDATE website_checks SET checked_at = '2023-01-01T00:00:00Z' WHERE id = 1")
-    
+
     db.save_website_check_result(
         business_id=1,
         original_url="http://a.com",
@@ -70,7 +70,7 @@ def temp_db(tmp_path: Path) -> Path:
         error_message=None,
     )
     db.execute("UPDATE website_checks SET checked_at = '2023-01-01T00:00:00Z' WHERE id = 3")
-    
+
     db.save_website_check_result(
         business_id=2,
         original_url="http://b.com",
@@ -105,7 +105,7 @@ def temp_db(tmp_path: Path) -> Path:
         scoring_version="v1",
         scored_at="2023-01-02T00:00:00Z",
     )
-    
+
     # Business 2 score
     db.save_lead_score(
         business_id=2,
@@ -116,10 +116,10 @@ def temp_db(tmp_path: Path) -> Path:
         scoring_version="v1",
         scored_at="2023-01-01T00:00:00Z",
     )
-    
+
     # Business 3 is permanently closed and unscored.
     # Business 4 is unscored and operational.
-    
+
     db.close()
     return db_path
 
@@ -159,14 +159,14 @@ def test_export_leads_basic_csv(temp_config: Path, tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "Rows exported: 2" in result.stdout
     assert "Unscored rows included: 0" in result.stdout
-    
+
     export_dir = tmp_path / "exports"
     csv_file = export_dir / "leads.csv"
     assert csv_file.exists()
-    
+
     # Check absolute path printed
     assert str(csv_file.resolve()) in result.stdout
-    
+
     # Check content to verify latest score / website check
     content = csv_file.read_text()
     assert "working" in content # latest website check for B1 and B2
@@ -186,7 +186,7 @@ def test_export_leads_limit_applied_after_sorting(temp_config: Path, tmp_path: P
     )
     assert result.exit_code == 0
     assert "Rows exported: 1" in result.stdout
-    
+
     # B1 has 'high' (1), B2 has 'medium' (2). Priority sort puts B1 first.
     content = (tmp_path / "exports" / "leads.csv").read_text()
     assert "Business A" in content
@@ -206,7 +206,7 @@ def test_export_leads_include_unscored(temp_config: Path, tmp_path: Path) -> Non
     assert result.exit_code == 0
     assert "Rows exported: 3" in result.stdout # B1, B2, B4 (B3 is closed)
     assert "Unscored rows included: 1" in result.stdout
-    
+
     content = (tmp_path / "exports" / "leads.csv").read_text()
     assert "Business D" in content
 
