@@ -191,6 +191,12 @@ class ExportConfig(BaseModel):
         return [p.lower() for p in value]
 
 
+class DemoConfig(BaseModel):
+    """Safety gate for the destructive fictional demo workflow."""
+
+    enabled: bool = False
+
+
 class AppConfig(BaseModel):
     """Full application configuration from YAML."""
 
@@ -204,6 +210,7 @@ class AppConfig(BaseModel):
     logging: LoggingConfigSection = Field(default_factory=LoggingConfigSection)
     lead_scoring: LeadScoringConfig = Field(default_factory=LeadScoringConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
+    demo: DemoConfig = Field(default_factory=DemoConfig)
 
     def output_directory(self) -> Path:
         return Path(self.output.directory)

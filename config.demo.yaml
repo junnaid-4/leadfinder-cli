@@ -1,0 +1,85 @@
+project:
+  name: "LeadFinder Portfolio Demo"
+
+demo:
+  enabled: true
+
+search:
+  location: "Exampleton, Fictionland"
+  queries:
+    - "fictional local services"
+    - "fictional neighborhood businesses"
+  max_results_per_query: 12
+  max_total_results: 24
+  max_api_requests: 10
+
+filters:
+  operational_only: false
+  minimum_rating: 0
+  minimum_review_count: 0
+
+website_check:
+  enabled: true
+  concurrency: 4
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 10
+  retries: 0
+  follow_redirects: true
+  max_redirects: 5
+  max_response_size_mb: 5
+  important_pages_enabled: false
+  max_important_pages: 5
+
+cache:
+  places_ttl_days: 30
+  website_check_ttl_days: 7
+
+output:
+  directory: "demo_output"
+  include_working_websites: true
+
+database:
+  path: "data/demo_lead_finder.db"
+
+logging:
+  level: "INFO"
+  directory: "logs"
+  console: true
+  file: false
+
+lead_scoring:
+  enabled: true
+  weights:
+    no_website: 40
+    unreachable: 30
+    dns_error: 30
+    ssl_error: 25
+    redirect_loop: 25
+    timeout: 20
+    http_5xx: 25
+    http_4xx: 15
+    blocked: 5
+    invalid_url: 20
+    unknown_error: 10
+    phone_present: 10
+    phone_missing: -10
+    rating_high: 10
+    rating_medium: 5
+    reviews_high: 15
+    reviews_medium: 10
+    reviews_low: 5
+    address_present: 5
+    missing_name: -20
+    temporarily_closed: -20
+  thresholds:
+    very_high: 80
+    high: 60
+    medium: 40
+    low: 20
+
+export:
+  default_format: csv
+  output_directory: "demo_output"
+  include_unscored: false
+  minimum_score: 0
+  priorities: []
