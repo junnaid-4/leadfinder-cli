@@ -160,7 +160,7 @@ def test_export_to_xlsx_success(tmp_path: Path, sample_rows: list[LeadExportRow]
     assert ws["A1"].font.bold is True
 
     # Freeze panes
-    assert ws.freeze_panes == "A2"
+    assert ws.freeze_panes == "D2"
 
     # Autofilter enabled
     assert ws.auto_filter.ref == "A1:V3"
@@ -177,6 +177,81 @@ def test_export_to_xlsx_success(tmp_path: Path, sample_rows: list[LeadExportRow]
     assert ws["F2"].value == 4.5
     assert isinstance(ws["M2"].value, int)  # http_status
     assert ws["M2"].value == 200
+
+    positions = {name: index for index, name in enumerate(EXPORT_COLUMNS, start=1)}
+    header = ws.cell(row=1, column=positions["business_name"])
+    assert header.fill.fgColor.rgb == "FF17365D"
+    assert header.font.color is not None
+    assert header.font.color.rgb == "FFFFFFFF"
+    assert header.font.bold is True
+    assert ws.sheet_view.showGridLines is False
+    assert ws.freeze_panes == "D2"
+    assert ws.print_title_rows == "$1:$1"
+    assert ws.page_setup.orientation == "landscape"
+
+    assert "LeadFinderLeads" in ws.tables
+    table = ws.tables["LeadFinderLeads"]
+    assert table.tableStyleInfo is not None
+    assert table.tableStyleInfo.showRowStripes is True
+
+    priority_cell = ws.cell(row=2, column=positions["priority"])
+    website_cell = ws.cell(row=2, column=positions["website_status"])
+    assert priority_cell.fill.fill_type == "solid"
+    assert website_cell.fill.fill_type == "solid"
+    assert priority_cell.fill.fgColor.rgb != website_cell.fill.fgColor.rgb
+    assert priority_cell.alignment.vertical == "top"
+    assert priority_cell.alignment.wrap_text is True
+    assert priority_cell.border.left.style == "thin"
+
+    expected_formats = {
+        "rating": "0.0",
+        "review_count": "#,##0",
+        "raw_score": "0",
+        "final_score": "0",
+        "http_status": "0",
+    }
+    for column, expected_format in expected_formats.items():
+        assert ws.cell(row=2, column=positions[column]).number_format == expected_format
+
+    for column in (
+        "original_website",
+        "normalized_website",
+        "final_website",
+        "google_maps_url",
+    ):
+        cell = ws.cell(row=2, column=positions[column])
+        assert cell.hyperlink is not None
+        assert cell.hyperlink.target == cell.value
+
+    business_name_letter = ws.cell(row=1, column=positions["business_name"]).column_letter
+    business_name_width = ws.column_dimensions[business_name_letter].width
+    assert business_name_width is not None
+    assert 15 < business_name_width <= 36
+
+    technical_columns = (
+        "business_id",
+        "place_id",
+        "normalized_website",
+        "scoring_version",
+        "score_breakdown",
+    )
+    for column in technical_columns:
+        letter = ws.cell(row=1, column=positions[column]).column_letter
+        assert ws.column_dimensions[letter].hidden is True
+
+    breakdown_letter = ws.cell(row=1, column=positions["score_breakdown"]).column_letter
+    breakdown_width = ws.column_dimensions[breakdown_letter].width
+    assert breakdown_width is not None
+    assert breakdown_width <= 40
+
+    assert ws.cell(row=2, column=positions["business_id"]).value == 1
+    assert ws.cell(row=2, column=positions["place_id"]).value == "P1"
+    assert ws.cell(row=2, column=positions["normalized_website"]).value == "https://test.com"
+    assert ws.cell(row=2, column=positions["scoring_version"]).value == "v1"
+    assert ws.cell(row=2, column=positions["score_breakdown"]).value == (
+        '{"timeout":20,"working":0}'
+    )
+    assert ws.row_dimensions[2].height == 31
 
     wb.close()
 
