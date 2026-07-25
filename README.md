@@ -4,6 +4,14 @@ A production-style Python command-line application for collecting local business
 
 > Turn raw local-business records into structured, reviewable lead opportunities.
 
+## Try the Demo
+
+```bash
+lead-finder demo --config config.demo.yaml
+```
+
+The checked-in demo configuration explicitly enables protected demo-owned paths. The demo requires no API key, uses only fictional businesses, and makes no external network requests. It creates a dedicated SQLite database and writes both reports to `demo_output/`. Re-run with `--overwrite` to safely recreate existing demo artifacts.
+
 ## Overview
 
 LeadFinder CLI is a modular lead-intelligence pipeline built for local-business research.
@@ -33,11 +41,13 @@ The current implementation includes:
 * Score explanations and history
 * Prioritized CSV exports
 * Prioritized XLSX exports
+* Zero-key, network-free fictional demo mode
+* Full-pipeline `run` orchestration
 * Atomic file writing
 * Spreadsheet formula-injection protection
 * Ruff linting
 * MyPy type checking
-* 131 automated tests
+* 142 automated tests
 
 ## Pipeline
 
@@ -132,7 +142,7 @@ LeadFinder CLI exports the latest business, website-check, and lead-score data t
 * CSV
 * XLSX
 
-Exports include deterministic sorting, configurable filters, stable column ordering, atomic file replacement, and spreadsheet formula-injection protection.
+Exports include deterministic sorting, configurable filters, stable column ordering, spreadsheet formula-injection protection, atomic single-file replacement, and coordinated pair-level replacement when both formats are requested.
 
 ## Requirements
 
@@ -237,6 +247,20 @@ Refer to `config.example.yaml` for the complete configuration structure.
 
 ```bash
 lead-finder validate-config --config config.yaml
+```
+
+### Run the full pipeline
+
+```bash
+lead-finder run --config config.yaml --format both
+```
+
+The pipeline validates configuration, collects businesses, checks websites, scores leads, and exports reports. Use `--format csv`, `--format xlsx`, or `--format both`; `--output-dir PATH` overrides the export directory; `--force-refresh` bypasses cached collection and analysis data; and `--overwrite` authorizes replacement of existing export files.
+
+Preview limits and planned stages with no API calls, HTTP requests, database creation, logging, or exports:
+
+```bash
+lead-finder run --config config.yaml --dry-run --format both
 ```
 
 ### Collect businesses
@@ -450,6 +474,8 @@ leadfinder-cli/
 │       ├── database.py
 │       ├── exporter.py
 │       ├── lead_scoring.py
+│       ├── pipeline.py
+│       ├── demo_data.py
 │       ├── places_client.py
 │       ├── website_checker.py
 │       └── ...
@@ -458,6 +484,7 @@ leadfinder-cli/
 ├── exports/
 ├── logs/
 ├── config.example.yaml
+├── config.demo.yaml
 ├── pyproject.toml
 ├── README.md
 └── LICENSE
@@ -502,6 +529,7 @@ Google Places is an external service and is not affiliated with, endorsed by, or
 * There is no automatic outreach functionality.
 * There is currently no hosted web dashboard.
 * SQLite is intended primarily for local use.
+* Demo results are synthetic and do not represent live market data.
 
 ## Roadmap
 
@@ -509,8 +537,6 @@ Planned improvements include:
 
 * Alternative business-data providers
 * CSV business import
-* Demo-data mode
-* Full-pipeline `run` command
 * Additional scoring signals
 * Contact-page discovery
 * FastAPI backend

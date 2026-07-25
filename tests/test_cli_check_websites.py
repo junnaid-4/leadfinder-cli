@@ -60,7 +60,7 @@ def test_cli_check_websites_success(temp_config, temp_db):
     result = runner.invoke(app, ["check-websites", "-c", str(temp_config)])
 
     assert result.exit_code == 0
-    assert "Checking 3 websites" in result.stdout
+    assert "Website checks completed: 3" in result.stdout
     assert "Working: 1" in result.stdout
     assert "HTTP errors: 1" in result.stdout
     assert "No website: 1" in result.stdout
@@ -97,12 +97,12 @@ def test_cli_check_websites_force_refresh_and_history(temp_config, temp_db):
 
     # Requirement 7: An already checked business is skipped when force_refresh=False
     result = runner.invoke(app, ["check-websites", "-c", str(temp_config)])
-    assert "Checking 1 websites" in result.stdout
+    assert "Website checks completed: 1" in result.stdout
 
     # Requirement 8 & 9: force_refresh=True inserts a second historical check result
     respx.get("https://example.com/1").mock(return_value=httpx.Response(200))
     result = runner.invoke(app, ["check-websites", "-c", str(temp_config), "--force-refresh"])
-    assert "Checking 3 websites" in result.stdout
+    assert "Website checks completed: 3" in result.stdout
 
     db = init_database(temp_db)
     cursor = db.execute("SELECT count(*) FROM website_checks WHERE business_id = 1")
@@ -120,7 +120,7 @@ def test_cli_check_websites_continues_on_failure(temp_config, temp_db):
     result = runner.invoke(app, ["check-websites", "-c", str(temp_config)])
 
     assert result.exit_code == 0
-    assert "Checking 3 websites" in result.stdout
+    assert "Website checks completed: 3" in result.stdout
     assert "Working: 1" in result.stdout
     assert "Other failures: 1" in result.stdout
 
@@ -208,7 +208,7 @@ def test_cli_summary_counts_all(temp_config, temp_db):
     runner = CliRunner()
     result = runner.invoke(app, ["check-websites", "-c", str(temp_config)])
 
-    assert "Checking 6 websites" in result.stdout
+    assert "Website checks completed: 6" in result.stdout
     assert "Working: 1" in result.stdout
     assert "HTTP errors: 1" in result.stdout
     assert "Timeout: 1" in result.stdout

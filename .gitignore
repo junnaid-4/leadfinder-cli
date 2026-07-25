@@ -24,6 +24,7 @@ ENV/
 htmlcov/
 
 # Project data
+demo_output/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
