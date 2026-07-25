@@ -1,31 +1,61 @@
 # LeadFinder CLI
 
-A production-style Python command-line application for collecting local businesses, checking website availability, scoring lead opportunities, and exporting prioritized lead reports to CSV and Excel.
+[![CI](https://github.com/junnaid-4/leadfinder-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/junnaid-4/leadfinder-cli/actions/workflows/ci.yml)
+![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Tests: 150 passing](https://img.shields.io/badge/tests-150%20passing-brightgreen)
 
-> Turn raw local-business records into structured, reviewable lead opportunities.
-
-## Try the Demo
-
-```bash
-lead-finder demo --config config.demo.yaml
-```
-
-The checked-in demo configuration explicitly enables protected demo-owned paths. The demo requires no API key, uses only fictional businesses, and makes no external network requests. It creates a dedicated SQLite database and writes both reports to `demo_output/`. Re-run with `--overwrite` to safely recreate existing demo artifacts.
+A production-style Python CLI for turning local-business data into structured, prioritized lead reports.
 
 ## Overview
 
-LeadFinder CLI is a modular lead-intelligence pipeline built for local-business research.
+LeadFinder collects local businesses from Google Places, checks website availability and health, calculates configurable lead-opportunity scores, and stores historical results in SQLite. It exports prioritized CSV files and professionally formatted XLSX workbooks for review.
 
-It can:
+The project emphasizes deterministic processing, explainable scoring, safe spreadsheet output, strict typing, and automated testing.
 
-1. Collect local business records from a configured provider.
-2. Store business information in SQLite.
-3. Check whether each business has a working website.
-4. Calculate a configurable opportunity score.
-5. Assign lead-priority levels.
-6. Export prioritized results to CSV or XLSX.
+## Quick Demo
 
-The project was built with deterministic database queries, history preservation, safe spreadsheet exports, strict typing, and automated testing.
+```bash
+lead-finder demo --config config.demo.yaml --overwrite
+```
+
+The demo requires no API key and performs no network requests. It processes 12 deterministic fictional businesses and generates a dedicated SQLite database, a CSV report, and a formatted XLSX report under `demo_output/`. The checked-in demo configuration restricts replacement to protected demo-owned paths.
+
+*CLI command overview*
+
+![LeadFinder CLI help](docs/images/cli-help.png)
+
+*Network-free fictional demo output*
+
+![LeadFinder demo output](docs/images/demo-output.png)
+
+## Pipeline
+
+```text
+Collect → Check Websites → Score Leads → Export Reports
+```
+
+Each stage is also available as a standalone command, while `lead-finder run` executes the complete real-data pipeline.
+
+## Excel Report Preview
+
+The formatted workbook keeps business names visible while scrolling, highlights lead priority and website status, and retains technical fields in hidden columns for deeper inspection.
+
+*Business details*
+
+![Excel report business details](docs/images/excel-report-1.png)
+
+*Website analysis*
+
+![Excel report website analysis](docs/images/excel-report-2.png)
+
+*Lead scoring*
+
+![Excel report lead scoring](docs/images/excel-report-3.png)
+
+*Export and source details*
+
+![Excel report export and source details](docs/images/excel-report-4.png)
 
 ## Current Status
 
@@ -40,30 +70,14 @@ The current implementation includes:
 * Configurable lead scoring
 * Score explanations and history
 * Prioritized CSV exports
-* Prioritized XLSX exports
+* Professionally formatted, prioritized XLSX exports
 * Zero-key, network-free fictional demo mode
 * Full-pipeline `run` orchestration
 * Atomic file writing
 * Spreadsheet formula-injection protection
 * Ruff linting
 * MyPy type checking
-* 142 automated tests
-
-## Pipeline
-
-```text
-Business Data Provider
-        ↓
-Business Collection
-        ↓
-SQLite Database
-        ↓
-Website Availability Checker
-        ↓
-Lead Scoring Engine
-        ↓
-CSV / XLSX Export
-```
+* 150 automated tests
 
 ## Features
 
